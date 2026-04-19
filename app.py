@@ -6,185 +6,135 @@ from PIL import Image
 
 st.set_page_config(page_title="步态分析系统", layout="wide")
 
-# 标题
-st.title("🚶‍♂️ 步态分析仪表盘")
-st.caption("Clinical Gait Analysis • AI Evaluation System")
+# ===== 标题 =====
+st.title("🚶 步态分析仪表盘（最终答辩版）")
+st.caption("Clinical Gait Analysis · AI Evaluation System")
 
-# =========================
-# 📂 数据输入
-# =========================
+# ===== 左侧输入 =====
 st.sidebar.header("📂 数据输入")
 
-csv1 = st.sidebar.file_uploader("上传受试者1 CSV", type=["csv"])
-csv2 = st.sidebar.file_uploader("上传受试者2 CSV（可选）", type=["csv"])
-uploaded_image = st.sidebar.file_uploader("上传步态图像", type=["png", "jpg", "jpeg"])
+file1 = st.sidebar.file_uploader("上传受试者1 CSV", type=["csv"])
+file2 = st.sidebar.file_uploader("上传受试者2 CSV（可选）", type=["csv"])
+image_file = st.sidebar.file_uploader("上传步态图片", type=["png", "jpg", "jpeg"])
 
-# =========================
-# 🧠 AI分析函数
-# =========================
-def ai_analysis(data):
-    mean_val = data.mean()
-    std_val = data.std()
+st.sidebar.header("🧠 指令系统")
+command = st.sidebar.text_input("输入指令（如：分析 / 对比 / 报告）")
 
-    if std_val < 5:
-        status = "正常"
-        score = 95
-    elif std_val < 10:
-        status = "轻微异常"
-        score = 80
-    else:
-        status = "异常"
-        score = 60
+# ===== 工具函数 =====
+def load_data(file):
+    try:
+        df = pd.read_csv(file)
+        return df
+    except:
+        return None
 
-    explanation = f"""
-    系统检测到当前步态数据波动为 {std_val:.2f}，
-    属于【{status}】范围。
-    该结果表明受试者步态稳定性{'良好' if std_val < 5 else '一般或较差'}，
-    建议{'保持当前状态' if std_val < 5 else '进一步评估或训练'}。
-    """
+def analyze(df):
+    if "hip_flexion_deg" in df.columns:
+        data = df["hip_flexion_deg"]
+        mean = data.mean()
+        deviation = abs(mean)
 
-    return status, score, explanation
+        score = max(60, 100 - deviation * 2)
 
-# =========================
-# 📊 数据分析
-# =========================
-if csv1:
-    df1 = pd.read_csv(csv1)
-    col = df1.columns[0]
+        if deviation < 5:
+            status = "正常"
+        elif deviation < 15:
+            status = "轻微异常"
+        else:
+            status = "异常"
 
-    st.subheader("📊 步态曲线对比")
+        return status, deviation, score
+    return "未知", 0, 0
+
+# ===== 主界面 =====
+
+# 如果没有数据 → 显示说明
+if file1 is None:
+    st.info("👈 请在左侧上传CSV数据开始分析")
+
+    st.subheader("📘 项目说明")
+    st.write("""
+    本系统基于 Week5 数据分析课程开发，结合 Pandas 与可视化技术，实现：
+    
+    - 多受试者步态分析
+    - 曲线可视化
+    - AI智能评估
+    - 图像辅助分析
+    - 指令驱动系统
+    
+    支持电脑 / 手机 / 平板访问
+    """)
+
+else:
+    df1 = load_data(file1)
+    df2 = load_data(file2) if file2 else None
+
+    st.subheader("📊 步态曲线分析")
 
     fig, ax = plt.subplots()
-    ax.plot(df1[col], label="Subject 1")
 
-    # 第二个
-    if csv2:
-        df2 = pd.read_csv(csv2)
-        ax.plot(df2[col], label="Subject 2")
+    if df1 is not None and "hip_flexion_deg" in df1.columns:
+        ax.plot(df1["hip_flexion_deg"], label="Subject 1")
 
-    # 模拟正常曲线
-    normal = np.sin(np.linspace(0, 2*np.pi, len(df1))) * 30
-    ax.plot(normal, '--', label="Normal")
+    if df2 is not None and "hip_flexion_deg" in df2.columns:
+        ax.plot(df2["hip_flexion_deg"], label="Subject 2")
 
+    # 正常参考曲线（模拟）
+    normal = 30 * np.sin(np.linspace(0, 2*np.pi, 100))
+    ax.plot(normal, linestyle="--", label="Normal")
+
+    ax.set_title("Gait Curve Comparison")
     ax.legend()
-    ax.set_ylabel("Angle (deg)")
+
     st.pyplot(fig)
 
-    # =========================
-    # 🧠 AI分析结果
-    # =========================
+    # ===== AI分析 =====
     st.subheader("🧠 AI分析结果")
 
-    status1, score1, exp1 = ai_analysis(df1[col])
-    st.success(f"受试者1：{status1} | 评分：{score1}")
-    st.info(exp1)
+    status1, dev1, score1 = analyze(df1)
 
-    if csv2:
-        status2, score2, exp2 = ai_analysis(df2[col])
-        st.success(f"受试者2：{status2} | 评分：{score2}")
-        st.info(exp2)
+    st.write(f"👉 受试者1：状态={status1} | 偏差={dev1:.2f} | 评分={score1:.1f}")
 
-    # =========================
-    # 🏆 排名
-    # =========================
+    if df2 is not None:
+        status2, dev2, score2 = analyze(df2)
+        st.write(f"👉 受试者2：状态={status2} | 偏差={dev2:.2f} | 评分={score2:.1f}")
+
+    # ===== 排名 =====
     st.subheader("🏆 步态评分排名")
 
-    scores = {"ID": [], "Score": []}
-    scores["ID"].append("Subject 1")
-    scores["Score"].append(score1)
+    results = [
+        {"ID": "1", "Score": score1}
+    ]
 
-    if csv2:
-        scores["ID"].append("Subject 2")
-        scores["Score"].append(score2)
+    if df2 is not None:
+        results.append({"ID": "2", "Score": score2})
 
-    df_score = pd.DataFrame(scores)
-    df_score = df_score.sort_values(by="Score", ascending=False)
-    st.table(df_score)
+    result_df = pd.DataFrame(results).sort_values(by="Score", ascending=False)
+    st.dataframe(result_df)
 
-    # =========================
-    # 📄 自动报告
-    # =========================
-    st.subheader("📄 自动生成临床报告")
+    # ===== 图像分析 =====
+    if image_file:
+        st.subheader("🖼 图像分析")
+        img = Image.open(image_file)
+        st.image(img, caption="上传的步态图像", use_container_width=True)
+        st.success("图像已加载，可用于辅助分析（演示功能）")
 
-    report = f"""
+    # ===== 指令系统 =====
+    if command:
+        st.subheader("💬 指令响应")
+
+        if "报告" in command:
+            report = f"""
 【步态分析报告】
 
-受试者1：{status1}（评分 {score1}）
+受试者1：{status1}（评分 {score1:.1f}）
 
-分析结论：
-{exp1}
-
+结论：建议进一步临床评估或保持当前状态。
 """
+            st.text(report)
 
-    if csv2:
-        report += f"""
-受试者2：{status2}（评分 {score2}）
+        elif "对比" in command and df2 is not None:
+            st.success("已完成两受试者对比分析")
 
-分析结论：
-{exp2}
-"""
-
-    report += """
-建议：
-1. 保持良好运动习惯
-2. 定期进行步态监测
-3. 如异常建议进一步临床评估
-"""
-
-    st.text(report)
-
-# =========================
-# 🖼 图像分析
-# =========================
-if uploaded_image:
-    st.subheader("🖼 图像分析")
-
-    img = Image.open(uploaded_image)
-    st.image(img, caption="步态图像")
-
-    img_array = np.array(img)
-    brightness = img_array.mean()
-
-    st.write("图像平均亮度:", round(brightness,2))
-
-    if brightness > 150:
-        st.success("图像清晰度良好")
-    else:
-        st.warning("图像偏暗，可能影响分析")
-
-# =========================
-# 💬 指令系统
-# =========================
-st.subheader("💬 智能指令系统")
-
-cmd = st.text_input("输入指令（如：评估 / 对比 / 报告）")
-
-if cmd:
-    if "评估" in cmd:
-        st.success("✅ 已执行步态评估")
-    elif "对比" in cmd:
-        st.info("📊 已生成对比分析")
-    elif "报告" in cmd:
-        st.warning("📄 报告已生成（见上方）")
-    else:
-        st.error("❌ 无法识别指令")
-
-# =========================
-# 📘 项目说明（答辩用）
-# =========================
-st.subheader("📘 项目说明")
-
-st.write("""
-本项目基于 Week 5 数据分析内容开发，结合 Pandas、Matplotlib 和 Web 技术，
-实现了一个跨平台步态分析系统。
-
-功能包括：
-- 多受试者数据分析
-- 步态曲线可视化
-- AI评分与解释
-- 图像分析
-- 指令驱动系统
-- 自动生成报告
-
-适用于运动科学、康复医学和临床辅助分析。
-""")
+        else:
+            st.warning("指令已接收（支持：分析 / 对比 / 报告）")
